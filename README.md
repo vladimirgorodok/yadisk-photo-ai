@@ -77,7 +77,7 @@
 
 Готовые APK:
 
-- **Releases** — файл `yadisk-photo-ai-1.0.0-release.apk` (подписан debug-ключом, устанавливается на телефон без настройки);
+- **Releases** — файл вида `yadisk-photo-ai-<версия>-release.apk` (сейчас актуальный — `yadisk-photo-ai-1.0.1-release.apk`; подписан debug-ключом, устанавливается на телефон без настройки);
 - **Actions → Android APK** — артефакты `yadisk-photo-ai-debug-apk` и `yadisk-photo-ai-release-apk` для каждой сборки.
 
 Установка: скачайте APK на Android и разрешите установку из неизвестных источников. Это учебная сборка, **не для публикации в Google Play** (release-подпись debug-ключом).

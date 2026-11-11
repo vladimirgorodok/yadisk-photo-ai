@@ -11,6 +11,9 @@ apk-out/
 !.env.example
 *.local
 
+# Артефакты теста базы (npm run test:db)
+scripts/.tmp/
+
 # Логи и системные файлы
 *.log
 npm-debug.log*
