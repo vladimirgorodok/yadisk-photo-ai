@@ -43,7 +43,7 @@ jobs:
           fi
 
       - name: Setup Gradle
-        uses: gradle/actions/setup-gradle@v4
+        uses: gradle/actions/setup-gradle@v6
 
       - name: Install dependencies
         run: npm ci
@@ -60,25 +60,31 @@ jobs:
           chmod +x gradlew
           ./gradlew assembleDebug assembleRelease --no-daemon --stacktrace
 
+      - name: Prepare named APKs
+        run: |
+          VERSION=$(node -p "require('./package.json').version")
+          mkdir -p apk-out
+          cp android/app/build/outputs/apk/debug/app-debug.apk "apk-out/yadisk-photo-ai-${VERSION}-debug.apk"
+          cp android/app/build/outputs/apk/release/app-release.apk "apk-out/yadisk-photo-ai-${VERSION}-release.apk"
+          ls -lh apk-out
+
       - name: Upload debug APK
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: yadisk-photo-ai-debug-apk
-          path: android/app/build/outputs/apk/debug/*.apk
+          path: apk-out/*-debug.apk
           if-no-files-found: error
 
       - name: Upload release APK
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: yadisk-photo-ai-release-apk
-          path: android/app/build/outputs/apk/release/*.apk
+          path: apk-out/*-release.apk
           if-no-files-found: error
 
       - name: Publish GitHub Release
         if: startsWith(github.ref, 'refs/tags/v')
         uses: softprops/action-gh-release@v2
         with:
-          files: |
-            android/app/build/outputs/apk/debug/app-debug.apk
-            android/app/build/outputs/apk/release/app-release.apk
+          files: apk-out/*.apk
           generate_release_notes: true
