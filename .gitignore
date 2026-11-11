@@ -1,0 +1,22 @@
+# Зависимости и сборка
+node_modules/
+dist/
+dist-ssr/
+*.tsbuildinfo
+
+# Локальные настройки и секреты
+.env
+.env.*
+!.env.example
+*.local
+
+# Логи и системные файлы
+*.log
+npm-debug.log*
+.DS_Store
+Thumbs.db
+
+# Редакторы
+.idea/
+.vscode/*
+!.vscode/extensions.json
