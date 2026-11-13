@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useApp } from '../state/AppContext';
 import { joinPath, type YItem } from '../lib/api';
 import { formatBytes } from '../lib/util';
@@ -108,6 +108,12 @@ export function Drawer() {
   const [moveBusy, setMoveBusy] = useState(false);
   const loadingRef = useRef<Set<string>>(new Set());
 
+  // Перемещение действует только для файлов Диска (локальные — в «Устройстве»).
+  const diskCount = useMemo(
+    () => [...selected.keys()].filter((p) => p.startsWith('disk:')).length,
+    [selected],
+  );
+
   const load = useCallback(
     async (path: string) => {
       if (!api || loadingRef.current.has(path)) return;
@@ -191,7 +197,11 @@ export function Drawer() {
   const doMove = async () => {
     setMoveBusy(true);
     try {
-      await app.moveMany([...selected.values()], target, overwrite);
+      await app.moveMany(
+        [...selected.values()].filter((f) => f.path.startsWith('disk:')),
+        target,
+        overwrite,
+      );
       setConfirmMove(false);
       setChildren((prev) => {
         const next = new Map(prev);
@@ -217,7 +227,7 @@ export function Drawer() {
           <div className="drawer-title">
             <span className="drawer-ico">🗂️</span>
             <span>Файлы Яндекс Диска</span>
-            {selected.size > 0 && <span className="badge">{selected.size}</span>}
+            {diskCount > 0 && <span className="badge">{diskCount}</span>}
           </div>
           <div className="drawer-tools" onClick={(e) => e.stopPropagation()}>
             <button
@@ -273,20 +283,20 @@ export function Drawer() {
                   {target}
                 </div>
                 <div className="move-count">
-                  {selected.size
-                    ? `Выбрано файлов: ${selected.size}`
+                  {diskCount
+                    ? `Выбрано файлов: ${diskCount}`
                     : 'Отметьте фотографии в результатах поиска или в группах'}
                 </div>
               </div>
               <button
                 className="btn primary"
-                disabled={!selected.size || moving !== null || moveBusy}
+                disabled={!diskCount || moving !== null || moveBusy}
                 onClick={() => {
                   setOverwrite(false);
                   setConfirmMove(true);
                 }}
               >
-                {moving ? `Перемещение ${moving.done}/${moving.total}` : `Переместить${selected.size ? ` (${selected.size})` : ''}`}
+                {moving ? `Перемещение ${moving.done}/${moving.total}` : `Переместить${diskCount ? ` (${diskCount})` : ''}`}
               </button>
             </div>
             {moving && (
@@ -344,13 +354,13 @@ export function Drawer() {
                 Отмена
               </button>
               <button className="btn primary" onClick={doMove} disabled={moveBusy}>
-                {moveBusy ? 'Перемещаю…' : `Переместить (${selected.size})`}
+                {moveBusy ? 'Перемещаю…' : `Переместить (${diskCount})`}
               </button>
             </>
           }
         >
           <p>
-            Переместить <b>{selected.size}</b> файлов в папку:
+            Переместить <b>{diskCount}</b> файлов в папку:
           </p>
           <div className="path-box">{target}</div>
           <label className="checkline">

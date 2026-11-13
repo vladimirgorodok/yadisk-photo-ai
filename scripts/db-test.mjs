@@ -1,10 +1,11 @@
 /**
  * Регрессионный тест локальной базы (src/lib/db.ts).
  *
- * mode=fresh — свежая база: оба стора должны создаться с первого открытия
- *              (раньше idb-keyval создавал только первый использованный стор).
+ * mode=fresh — свежая база: все стора (photos, kv, local, jobs) должны
+ *              создаться с первого открытия (раньше idb-keyval создавал
+ *              только первый использованный стор).
  * mode=heal   — база в состоянии, как на телефоне пользователя: есть только
- *              стор 'photos', стора 'kv' нет. Лечение должно достроить 'kv'
+ *              стор 'photos', остальных нет. Лечение должно достроить их
  *              версией выше и НЕ потерять данные 'photos'.
  *
  * Запуск: node scripts/db-test.mjs fresh | heal
@@ -49,9 +50,20 @@ if (mode === 'heal') {
   if (!paths.includes('disk:/old.jpg')) {
     throw new Error(`данные photos потеряны при лечении: ${JSON.stringify(paths)}`);
   }
-  console.log('HEAL OK: kv-стор достроен, данные photos целы, чтение/запись работают');
+
+  // Сторы нового модуля «Устройство»: local и jobs достраиваются тем же лечением.
+  await dbmod.localSet({ path: '/storage/emulated/0/a.jpg', name: 'a.jpg', dir: '/storage/emulated/0', size: 5, modified: '', md5: '', mime: 'image/jpeg', source: 'local' });
+  const local = await dbmod.localEntries();
+  if (local.length !== 1) throw new Error('local-стор не достроен/не работает');
+  await dbmod.jobSet({ id: 'j1', kind: 'download', src: 'disk:/x.jpg', dst: '/x.jpg', name: 'x.jpg', status: 'queued', bytesDone: 0, bytesTotal: 0, createdAt: 1 });
+  const jobs = await dbmod.jobEntries();
+  if (jobs.length !== 1) throw new Error('jobs-стор не достроен/не работает');
+  const after = await dbmod.photoEntries();
+  if (after.length !== 1) throw new Error('photos пострадали от новых сторов');
+
+  console.log('HEAL OK: kv/local/jobs достроены, данные photos целы, чтение/запись работают');
 } else {
-  // Свежая база: photoEntries() первым открывает базу — kv-стор обязан
+  // Свежая база: photoEntries() первым открывает базу — все стора обязаны
   // появиться сразу, а не «когда-нибудь потом».
   const dbmod = await import('./.tmp/lib/db.js');
   const empty = await dbmod.photoEntries();
@@ -62,5 +74,9 @@ if (mode === 'heal') {
   await dbmod.photoSet({ path: 'disk:/new.jpg', name: 'new.jpg', dir: 'disk:/', size: 2, modified: '', md5: '', mime: 'image/jpeg' });
   const list = await dbmod.photoEntries();
   if (list.length !== 1) throw new Error('photoSet не сработал');
-  console.log('FRESH OK: оба стора созданы с первого открытия');
+  await dbmod.localSet({ path: '/b.jpg', name: 'b.jpg', dir: '/', size: 1, modified: '', md5: '', mime: 'image/jpeg', source: 'local' });
+  if ((await dbmod.localEntries()).length !== 1) throw new Error('local не работает на свежей базе');
+  await dbmod.jobSet({ id: 'j2', kind: 'upload', src: '/b.jpg', dst: 'disk:/b.jpg', name: 'b.jpg', status: 'queued', bytesDone: 0, bytesTotal: 0, createdAt: 1 });
+  if ((await dbmod.jobEntries()).length !== 1) throw new Error('jobs не работает на свежей базе');
+  console.log('FRESH OK: все стора (photos/kv/local/jobs) созданы с первого открытия');
 }

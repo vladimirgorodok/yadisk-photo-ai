@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState } from 'react';
 import { useApp } from '../state/AppContext';
+import { useDevice } from '../state/DeviceContext';
 import { appBaseUrl, oauthAuthorizeUrl } from '../lib/settings';
 import { photoClear, kvSet } from '../lib/db';
 import { resetIndex } from '../lib/scan';
@@ -7,8 +8,15 @@ import { copyToClipboard, formatBytes, formatDate } from '../lib/util';
 import { isNative } from '../lib/http';
 import { Modal } from '../components/Modal';
 
+const POLICY_LABELS: { key: 'skip' | 'rename' | 'overwrite'; label: string }[] = [
+  { key: 'skip', label: 'Пропустить' },
+  { key: 'rename', label: 'Переименовать' },
+  { key: 'overwrite', label: 'Заменить' },
+];
+
 export function SettingsView() {
   const app = useApp();
+  const device = useDevice();
   const { api, connected, checking, connectError, user, disk, settings, updateSettings, toast, photos, scanAt, scanning } = app;
   const [tokenDraft, setTokenDraft] = useState(settings.token);
   const [showToken, setShowToken] = useState(false);
@@ -310,14 +318,70 @@ export function SettingsView() {
       </section>
 
       <section className="panel">
+        <h2>Устройство и синхронизация</h2>
+        <p className="muted">
+          Модуль «Устройство» (APK): локальный ИИ-анализ файлов, переименование по содержимому и
+          очередь «Трансфер» — копирование между Диском и устройством с проверкой md5. Оригиналы
+          не удаляются, пока вы явно не отметите удаление после проверки.
+        </p>
+        <div className="field">
+          <span>Если файл с таким именем уже есть при загрузке на Диск</span>
+          <div className="path-chips">
+            {POLICY_LABELS.map((p) => (
+              <button
+                key={p.key}
+                className={`chip ${settings.conflictPolicy === p.key ? 'on' : ''}`}
+                onClick={() => updateSettings({ conflictPolicy: p.key })}
+              >
+                {p.label}
+              </button>
+            ))}
+          </div>
+        </div>
+        <div className="conn-grid">
+          <label className="field">
+            <span>Папка устройства для скачивания с Диска</span>
+            <input
+              value={settings.downloadDir}
+              onChange={(e) => updateSettings({ downloadDir: e.target.value })}
+              spellCheck={false}
+              placeholder="/storage/emulated/0/Download/…"
+            />
+          </label>
+          <label className="field">
+            <span>Папка Диска для загрузки с устройства</span>
+            <input
+              value={settings.uploadDir}
+              onChange={(e) => updateSettings({ uploadDir: e.target.value })}
+              spellCheck={false}
+              placeholder="disk:/С устройства"
+            />
+          </label>
+        </div>
+        <div className="btn-row">
+          <button
+            className="btn ghost"
+            onClick={async () => {
+              await device.clearLocalIndex();
+            }}
+            disabled={!device.supported || !device.localPhotos.length}
+          >
+            Очистить индекс устройства ({device.localPhotos.length})
+          </button>
+        </div>
+      </section>
+
+      <section className="panel">
         <h2>О приложении</h2>
         <p className="muted">
           <b>Диск Фото AI</b> — PWA и Android-приложение: ИИ-поиск фотографий по описанию на Яндекс Диске,
-          перемещение выбранных файлов в любую папку и группировка лиц, животных и сюжетов. Работает без сервера:
+          перемещение выбранных файлов в любую папку, группировка лиц, животных и сюжетов, а в APK —
+          локальный ИИ-анализ файлов устройства, переименование по содержимому и безопасная
+          синхронизация «Диск ↔ устройство» (копии с проверкой md5). Работает без сервера:
           запросы идут напрямую в API Яндекс Диска, распознавание — на устройстве.
         </p>
         <ul className="muted small">
-          <li>Версия 1.0.0</li>
+          <li>Версия 1.1.0</li>
           <li>
             Исходный код:{' '}
             <a href="https://github.com/vladimirgorodok/yadisk-photo-ai" target="_blank" rel="noreferrer">

@@ -4,10 +4,12 @@ type Transformers = typeof import('@huggingface/transformers');
 
 export const CLIP_MODEL = 'Xenova/clip-vit-base-patch32';
 export const TRANSLATE_MODEL = 'Xenova/opus-mt-ru-en';
+export const TRANSLATE_EN_RU_MODEL = 'Xenova/opus-mt-en-ru';
+export const CAPTION_MODEL = 'Xenova/blip-image-captioning-base';
 
 let lib: Transformers | null = null;
 
-async function getLib(): Promise<Transformers> {
+export async function getLib(): Promise<Transformers> {
   if (!lib) {
     lib = await import('@huggingface/transformers');
     lib.env.allowLocalModels = false;
@@ -28,7 +30,7 @@ export function setModelStatus(cb: ((s: ModelStatus) => void) | null): void {
   statusHook = cb;
 }
 
-function reporter(label: string) {
+export function reporter(label: string) {
   const files = new Map<string, { loaded: number; total: number }>();
   return (data: {
     status?: string;
@@ -209,5 +211,77 @@ export async function preloadAll(): Promise<void> {
     await ensureTranslator();
   } catch {
     /* переводчик необязателен для английских запросов */
+  }
+}
+
+// --- Подписи BLIP (переименование файлов по содержимому) ---
+
+type CaptionPipe = (img: unknown, opts?: object) => Promise<{ generated_text?: string }[] | { generated_text?: string }>;
+
+let captioner: CaptionPipe | null = null;
+let captionerLoading: Promise<void> | null = null;
+
+export async function preloadCaptioner(): Promise<void> {
+  if (captioner) return;
+  if (!captionerLoading) {
+    captionerLoading = (async () => {
+      const t = await getLib();
+      statusHook?.({ pct: 0, msg: 'Загрузка модели подписей (BLIP)…' });
+      const pipe = await t.pipeline('image-to-text', CAPTION_MODEL, {
+        dtype: 'q8',
+        progress_callback: reporter('Подписи'),
+      } as never);
+      captioner = pipe as unknown as CaptionPipe;
+      statusHook?.({ pct: 100, msg: 'Модель подписей готова' });
+    })().catch((e) => {
+      captionerLoading = null;
+      throw e;
+    });
+  }
+  return captionerLoading;
+}
+
+/** Строит текстовую подпись для изображения (по-английски). */
+export async function captionImage(blob: Blob): Promise<string> {
+  await preloadCaptioner();
+  const t = await getLib();
+  const img = await t.RawImage.fromBlob(blob);
+  const out = await captioner!(img, { max_new_tokens: 32 });
+  const first = Array.isArray(out) ? out[0] : out;
+  return (first?.generated_text ?? '').trim();
+}
+
+// --- Переводчик en→ru (для русских имён файлов) ---
+
+let enRu: ((text: string, opts?: object) => Promise<unknown>) | null = null;
+let enRuLoading: Promise<void> | null = null;
+
+export async function toRussian(text: string): Promise<string> {
+  const src = text.trim();
+  if (!src) return src;
+  try {
+    if (!enRuLoading) {
+      enRuLoading = (async () => {
+        const t = await getLib();
+        statusHook?.({ pct: 0, msg: 'Загрузка переводчика en→ru…' });
+        const pipe = await t.pipeline('translation', TRANSLATE_EN_RU_MODEL, {
+          dtype: 'q8',
+          progress_callback: reporter('Переводчик en→ru'),
+        } as never);
+        enRu = pipe as unknown as (text: string, opts?: object) => Promise<unknown>;
+        statusHook?.({ pct: 100, msg: 'Переводчик en→ru готов' });
+      })().catch((e) => {
+        enRuLoading = null;
+        throw e;
+      });
+    }
+    await enRuLoading;
+    const out = (await enRu!(src, { max_new_tokens: 96 })) as
+      | { translation_text?: string }[]
+      | { translation_text?: string };
+    const txt = Array.isArray(out) ? out[0]?.translation_text : out?.translation_text;
+    return (txt || src).trim();
+  } catch {
+    return src; // без перевода — оставляем английский текст
   }
 }

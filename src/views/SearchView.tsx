@@ -3,9 +3,11 @@ import { useApp } from '../state/AppContext';
 import { embedTexts, toEnglish } from '../lib/ai';
 import { dot, formatDate, plural } from '../lib/util';
 import { previewCache, resetIndex } from '../lib/scan';
+import { isDeviceNative } from '../lib/localfs';
 import { PhotoGrid } from '../components/PhotoGrid';
 import { ProgressPanel } from '../components/ProgressPanel';
 import { Modal } from '../components/Modal';
+import { DownloadDialog } from '../components/DownloadDialog';
 import type { PhotoRec, SearchHit } from '../types';
 
 const EXAMPLES = ['море и пляж', 'кот', 'свадьба', 'машина', 'закат', 'собака на прогулке', 'еда', 'документы'];
@@ -21,6 +23,13 @@ export function SearchView({ onOpenSettings }: { onOpenSettings: () => void }) {
   const [limit, setLimit] = useState(60);
   const [resetOpen, setResetOpen] = useState(false);
   const [resetting, setResetting] = useState(false);
+  const [downloadOpen, setDownloadOpen] = useState(false);
+
+  // Выделенные файлы Диска (локальные файлы не участвуют в перемещении/скачивании сюда).
+  const diskSelected = useMemo(
+    () => photos.filter((p) => selected.has(p.path) && p.path.startsWith('disk:')),
+    [photos, selected],
+  );
 
   const indexed = useMemo(() => photos.filter((p) => p.emb && p.emb.length).length, [photos]);
   const filtered = useMemo(() => allHits.filter((h) => h.score >= settings.minScore), [allHits, settings.minScore]);
@@ -187,9 +196,14 @@ export function SearchView({ onOpenSettings }: { onOpenSettings: () => void }) {
               <button className="btn ghost sm" onClick={toggleAll}>
                 {allSelected ? 'Снять все' : 'Выбрать все'}
               </button>
-              {selected.size > 0 && (
+              {isDeviceNative && diskSelected.length > 0 && (
+                <button className="btn ghost sm" onClick={() => setDownloadOpen(true)}>
+                  ⬇ На устройство ({diskSelected.length})
+                </button>
+              )}
+              {diskSelected.length > 0 && (
                 <button className="btn primary sm" onClick={() => app.setDrawerOpen(true)}>
-                  Переместить ({selected.size})
+                  Переместить ({diskSelected.length})
                 </button>
               )}
             </div>
@@ -246,6 +260,10 @@ export function SearchView({ onOpenSettings }: { onOpenSettings: () => void }) {
             Следующее сканирование проанализирует фотографии заново.
           </p>
         </Modal>
+      )}
+
+      {downloadOpen && isDeviceNative && (
+        <DownloadDialog files={diskSelected} onClose={() => setDownloadOpen(false)} />
       )}
     </div>
   );

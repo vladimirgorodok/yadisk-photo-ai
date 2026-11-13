@@ -4,6 +4,14 @@ export interface Settings {
   minScore: number;
   modelKey: string;
   lastFolder: string;
+  /** Политика конфликтов при загрузке файлов на Диск. */
+  conflictPolicy: 'skip' | 'rename' | 'overwrite';
+  /** Папка устройства для скачивания с Диска. */
+  downloadDir: string;
+  /** Папка Диска для загрузки с устройства. */
+  uploadDir: string;
+  /** Последняя открытая папка в модуле «Устройство». */
+  localRoot: string;
 }
 
 const KEY = 'yfa:settings:v1';
@@ -14,6 +22,10 @@ export const DEFAULT_SETTINGS: Settings = {
   minScore: 0.14,
   modelKey: 'clip-vit-b32',
   lastFolder: 'disk:/',
+  conflictPolicy: 'rename',
+  downloadDir: '/storage/emulated/0/Download/Диск Фото AI',
+  uploadDir: 'disk:/С устройства',
+  localRoot: '/storage/emulated/0',
 };
 
 export function loadSettings(): Settings {

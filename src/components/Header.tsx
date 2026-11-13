@@ -1,9 +1,14 @@
 import { useApp } from '../state/AppContext';
+import { useDevice } from '../state/DeviceContext';
 
-export type Tab = 'search' | 'groups' | 'settings';
+export type Tab = 'search' | 'groups' | 'device' | 'settings';
 
 export function Header({ tab, setTab }: { tab: Tab; setTab: (t: Tab) => void }) {
   const app = useApp();
+  const device = useDevice();
+  const activeJobs = device.jobs.filter(
+    (j) => j.status === 'running' || j.status === 'queued',
+  ).length;
   return (
     <header className="header">
       <div className="brand" onClick={() => setTab('search')} role="button" tabIndex={0}>
@@ -24,6 +29,14 @@ export function Header({ tab, setTab }: { tab: Tab; setTab: (t: Tab) => void }) 
         </button>
         <button className={tab === 'groups' ? 'on' : ''} onClick={() => setTab('groups')}>
           Группы
+        </button>
+        <button
+          className={`tab-device ${tab === 'device' ? 'on' : ''}`}
+          onClick={() => setTab('device')}
+          title="Файлы устройства: ИИ-анализ, переименование, трансфер"
+        >
+          Устройство
+          {activeJobs > 0 && <span className="tab-badge">{activeJobs}</span>}
         </button>
         <button className={tab === 'settings' ? 'on' : ''} onClick={() => setTab('settings')}>
           Настройки

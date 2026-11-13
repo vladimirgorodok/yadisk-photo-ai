@@ -17,18 +17,58 @@ export interface PhotoRec {
   modified: string;
   md5: string;
   mime: string;
+  /** Источник: файл с Яндекс Диска или локальный файл устройства. */
+  source?: 'disk' | 'local';
   /** Последняя подписанная ссылка на превью (может устареть). */
   preview?: string;
+  /** Локальная миниатюра (для файлов устройства). */
+  thumb?: Blob;
+  /** Время изменения в мс (для локальных файлов). */
+  mtime?: number;
   /** CLIP-эмбеддинг (нормализованный, 512). */
   emb?: Float32Array;
   embModel?: string;
   embAt?: number;
+  /** Подпись BLIP (для переименования по содержимому). */
+  caption?: string;
+  captionAt?: number;
   /** Проход детекции лиц выполнен. */
   facesDone?: boolean;
   facesModel?: string;
   faces?: FaceInfo[];
   /** Индекс категории (см. CATEGORIES). */
   cat?: number;
+}
+
+export type JobStatus = 'queued' | 'running' | 'paused' | 'done' | 'error' | 'canceled';
+
+/** Задача очереди «Трансфер» (копирование между Диском и устройством). */
+export interface TransferJob {
+  id: string;
+  kind: 'download' | 'upload';
+  /** Источник: путь на Диске (download) или локальный путь (upload). */
+  src: string;
+  /** Назначение: локальный путь (download) или путь на Диске (upload). */
+  dst: string;
+  name: string;
+  status: JobStatus;
+  bytesDone: number;
+  bytesTotal: number;
+  error?: string;
+  /** Примечание (например, «пропущен: уже есть»). */
+  note?: string;
+  /** download: удалить оригинал с Диска после успешной проверки md5. */
+  deleteAfter?: boolean;
+  /** upload: удалить локальный файл после успешной проверки md5. */
+  deleteLocal?: boolean;
+  /** Ожидаемый md5 (с Диска) для проверки после скачивания. */
+  md5Expected?: string;
+  /** Ожидаемый md5 (локальный) для проверки после загрузки. */
+  md5Local?: string;
+  /** Загрузка с разрешением перезаписи (политика «заменять»). */
+  overwrite?: boolean;
+  createdAt: number;
+  finishedAt?: number;
 }
 
 export interface IndexMeta {

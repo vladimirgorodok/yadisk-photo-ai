@@ -194,6 +194,26 @@ export class YandexDisk {
     if (op?.href) await this.waitOperation(op.href);
   }
 
+  /** Подписанная ссылка на скачивание файла. */
+  async downloadUrl(path: string): Promise<string> {
+    const j = await this.request<{ href?: string }>('GET', `${API}/resources/download`, { path });
+    if (!j?.href) throw new DiskError('Яндекс Диск не выдал ссылку на скачивание');
+    return j.href;
+  }
+
+  /** Подписанная ссылка для загрузки файла (PUT). */
+  async uploadUrl(path: string, overwrite = false): Promise<string> {
+    const j = await this.request<{ href?: string }>('GET', `${API}/resources/upload`, { path, overwrite });
+    if (!j?.href) throw new DiskError('Яндекс Диск не выдал ссылку для загрузки');
+    return j.href;
+  }
+
+  /** Удаляет файл или папку (в корзину). */
+  async delete(path: string): Promise<void> {
+    const op = await this.request<{ href?: string }>('DELETE', `${API}/resources`, { path });
+    if (op?.href) await this.waitOperation(op.href);
+  }
+
   private async waitOperation(href: string, timeoutMs = 90_000): Promise<void> {
     const started = Date.now();
     for (;;) {

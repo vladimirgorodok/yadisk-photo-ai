@@ -329,6 +329,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
     async (files: SelectedFile[], targetDir: string, overwrite: boolean): Promise<MoveResult> => {
       if (!api) throw new Error('Яндекс Диск не подключён');
       const res: MoveResult = { moved: [], failed: [] };
+      // Перемещение действует только для файлов Диска (локальные файлы — в «Устройстве»).
+      files = files.filter((f) => f.path.startsWith('disk:'));
       if (!files.length) return res;
       setMoving({ done: 0, total: files.length });
       try {

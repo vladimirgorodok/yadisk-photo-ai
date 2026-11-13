@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import type { PhotoRec } from '../types';
 import { previewCache } from '../lib/scan';
+import { localThumbUrl } from '../lib/localfs';
 import { useApp } from '../state/AppContext';
 import { clamp } from '../lib/util';
 
@@ -21,10 +22,14 @@ export function fileIcon(name: string): string {
 /** Миниатюра с обновлением просроченной подписанной ссылки. */
 export function Thumb({ rec }: { rec: PhotoRec }) {
   const app = useApp();
-  const [src, setSrc] = useState<string | undefined>(() => previewCache.get(rec.path) ?? rec.preview);
+  // Локальный файл устройства: миниатюра хранится в IndexedDB как Blob.
+  const localUrl = rec.thumb ? localThumbUrl(rec.path, rec.thumb) : undefined;
+  const [src, setSrc] = useState<string | undefined>(localUrl ?? previewCache.get(rec.path) ?? rec.preview);
   const attempts = useRef(0);
 
   const refresh = useCallback(() => {
+    // у локальных файлов подписных ссылок не бывает — только Blob-миниатюра
+    if (rec.thumb || rec.source === 'local') return;
     if (!app.api || attempts.current >= 2) {
       setSrc(undefined);
       return;
@@ -41,12 +46,12 @@ export function Thumb({ rec }: { rec: PhotoRec }) {
         }
       })
       .catch(() => setSrc(undefined));
-  }, [app.api, rec.path]);
+  }, [app.api, rec.path, rec.thumb, rec.source]);
 
   useEffect(() => {
     attempts.current = 0;
-    setSrc(previewCache.get(rec.path) ?? rec.preview);
-  }, [rec.path, rec.preview]);
+    setSrc(localUrl ?? previewCache.get(rec.path) ?? rec.preview);
+  }, [rec.path, rec.preview, localUrl]);
 
   useEffect(() => {
     if (!src) refresh();
@@ -67,7 +72,9 @@ export function PhotoGrid({
   return (
     <div className="grid">
       {items.map((rec) => {
-        const src = previewCache.get(rec.path) ?? rec.preview;
+        const src = rec.thumb
+          ? localThumbUrl(rec.path, rec.thumb)
+          : (previewCache.get(rec.path) ?? rec.preview);
         const sel = app.isSelected(rec.path);
         const score = scores?.get(rec.path);
         return (

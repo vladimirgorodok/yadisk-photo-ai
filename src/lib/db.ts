@@ -1,9 +1,12 @@
 import { get, set, del, entries, clear, keys, type UseStore } from 'idb-keyval';
-import type { PhotoRec } from '../types';
+import type { PhotoRec, TransferJob } from '../types';
 
 const DB_NAME = 'yadisk-photo-ai';
 const PHOTO_STORE = 'photos';
 const KV_STORE = 'kv';
+const LOCAL_STORE = 'local';
+const JOBS_STORE = 'jobs';
+const ALL_STORES = [PHOTO_STORE, KV_STORE, LOCAL_STORE, JOBS_STORE];
 
 /**
  * Открывает базу и гарантирует наличие ОБОИХ хранилищ.
@@ -22,8 +25,9 @@ function openRequest(version?: number): Promise<IDBDatabase> {
     const req = version === undefined ? indexedDB.open(DB_NAME) : indexedDB.open(DB_NAME, version);
     req.onupgradeneeded = () => {
       const db = req.result;
-      if (!db.objectStoreNames.contains(PHOTO_STORE)) db.createObjectStore(PHOTO_STORE);
-      if (!db.objectStoreNames.contains(KV_STORE)) db.createObjectStore(KV_STORE);
+      for (const name of ALL_STORES) {
+        if (!db.objectStoreNames.contains(name)) db.createObjectStore(name);
+      }
     };
     req.onsuccess = () => resolve(req.result);
     req.onerror = () => reject(req.error ?? new Error('Не удалось открыть локальную базу'));
@@ -36,7 +40,7 @@ async function openOnce(): Promise<IDBDatabase> {
   for (let attempt = 0; attempt < 3; attempt++) {
     try {
       let db = await openRequest();
-      if (!db.objectStoreNames.contains(PHOTO_STORE) || !db.objectStoreNames.contains(KV_STORE)) {
+      if (ALL_STORES.some((name) => !db.objectStoreNames.contains(name))) {
         const next = db.version + 1;
         db.close();
         db = await openRequest(next);
@@ -80,6 +84,8 @@ function storeFor(storeName: string): UseStore {
 
 export const photosStore = storeFor(PHOTO_STORE);
 export const kvStore = storeFor(KV_STORE);
+export const localStore = storeFor(LOCAL_STORE);
+export const jobsStore = storeFor(JOBS_STORE);
 
 export async function photoGet(path: string): Promise<PhotoRec | undefined> {
   return get<PhotoRec>(path, photosStore);
@@ -119,4 +125,44 @@ export async function kvDel(key: string): Promise<void> {
 
 export async function kvKeys(): Promise<string[]> {
   return keys(kvStore);
+}
+
+// --- Локальные файлы устройства ---
+
+export async function localGet(path: string): Promise<PhotoRec | undefined> {
+  return get<PhotoRec>(path, localStore);
+}
+
+export async function localSet(rec: PhotoRec): Promise<void> {
+  await set(rec.path, rec, localStore);
+}
+
+export async function localSetMany(recs: PhotoRec[]): Promise<void> {
+  for (const rec of recs) await set(rec.path, rec, localStore);
+}
+
+export async function localEntries(): Promise<[string, PhotoRec][]> {
+  return entries<string, PhotoRec>(localStore);
+}
+
+export async function localDel(paths: string[]): Promise<void> {
+  for (const p of paths) await del(p, localStore);
+}
+
+export async function localClear(): Promise<void> {
+  await clear(localStore);
+}
+
+// --- Очередь «Трансфер» ---
+
+export async function jobSet(job: TransferJob): Promise<void> {
+  await set(job.id, job, jobsStore);
+}
+
+export async function jobEntries(): Promise<[string, TransferJob][]> {
+  return entries<string, TransferJob>(jobsStore);
+}
+
+export async function jobDel(ids: string[]): Promise<void> {
+  for (const id of ids) await del(id, jobsStore);
 }
