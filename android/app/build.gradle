@@ -1,5 +1,24 @@
 apply plugin: 'com.android.application'
 
+// Версия берётся из package.json, чтобы Android-сборка не расходилась с релизом.
+def pkgVersion = '1.0.0'
+try {
+    def pkg = new groovy.json.JsonSlurper().parseText(new File("${rootDir}/../package.json").getText('UTF-8'))
+    if (pkg.version) pkgVersion = pkg.version.toString()
+} catch (Throwable ignored) {
+    logger.warn("Не удалось прочитать package.json — versionName=1.0.0")
+}
+def verCode = 1
+try {
+    def parts = pkgVersion.tokenize('.')
+    verCode = 1 +
+        (parts.size() > 0 ? parts[0].toInteger() * 10000 : 0) +
+        (parts.size() > 1 ? parts[1].toInteger() * 100 : 0) +
+        (parts.size() > 2 ? parts[2].toInteger() : 0)
+} catch (Throwable ignored) {
+    verCode = 1
+}
+
 android {
     namespace = "com.yadiskphotoai.app"
     compileSdk = rootProject.ext.compileSdkVersion
@@ -7,8 +26,8 @@ android {
         applicationId "com.yadiskphotoai.app"
         minSdkVersion rootProject.ext.minSdkVersion
         targetSdkVersion rootProject.ext.targetSdkVersion
-        versionCode 1
-        versionName "1.0.0"
+        versionCode verCode
+        versionName pkgVersion
         testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
         aaptOptions {
              // Files and dirs to omit from the packaged assets dir, modified to accommodate modern web apps.
