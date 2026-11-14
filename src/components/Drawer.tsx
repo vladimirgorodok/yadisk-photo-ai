@@ -216,7 +216,9 @@ export function Drawer() {
     }
   };
 
-  if (!api) return null;
+  // Панель показываем только когда её открыли (Фаб «Переместить», результаты
+  // поиска, группы) — в остальных вкладках она ни к чему и лишь засоряет экран.
+  if (!api || !drawerOpen) return null;
 
   const rootItem: YItem = { name: 'Яндекс Диск', path: 'disk:/', type: 'dir' };
 

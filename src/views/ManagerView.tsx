@@ -5,7 +5,8 @@ import { TransferPanel } from '../components/TransferPanel';
 import { DownloadDialog } from '../components/DownloadDialog';
 import { UploadDialog } from '../components/UploadDialog';
 import { DirBrowser, useLocalDir } from '../components/DirBrowser';
-import { guessMime } from '../lib/localfs';
+import { guessMime, walkAllFiles } from '../lib/localfs';
+import { isAbort } from '../lib/util';
 import type { DeviceFile } from '../lib/localfs';
 import type { PhotoRec } from '../types';
 import type { YItem } from '../lib/api';
@@ -103,6 +104,11 @@ function FromDiskSegment() {
   const [error, setError] = useState<string | null>(null);
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [dialogOpen, setDialogOpen] = useState(false);
+  const [walkNote, setWalkNote] = useState<string | null>(null);
+  const [walkBusy, setWalkBusy] = useState(false);
+  const walkAbortRef = useRef<AbortController | null>(null);
+
+  useEffect(() => () => walkAbortRef.current?.abort(), []);
 
   const load = async (p: string) => {
     const target = p.trim() || 'disk:/';
@@ -131,6 +137,58 @@ function FromDiskSegment() {
       else next.add(it.path);
       return next;
     });
+
+  /** Выделить все файлы текущей папки (без подпапок). */
+  const selectHere = () => {
+    const next = new Set(selected);
+    for (const it of items ?? []) if (it.type === 'file') next.add(it.path);
+    setSelected(next);
+  };
+
+  /** Выделить все файлы папки, включая подпапки (лимит — 3000 файлов). */
+  const selectTree = async () => {
+    const api = app.api;
+    if (!api || walkBusy) return;
+    const ctrl = new AbortController();
+    walkAbortRef.current = ctrl;
+    setWalkBusy(true);
+    setWalkNote('Обхожу папки…');
+    const LIMIT = 3000;
+    try {
+      const found = new Set<string>();
+      const stack = [path];
+      const seen = new Set([path]);
+      let done = 0;
+      while (stack.length && !ctrl.signal.aborted) {
+        const dir = stack.pop()!;
+        const res = await api.list(dir, { limit: 500, preview: false });
+        done++;
+        for (const it of res.items) {
+          if (it.type === 'file') found.add(it.path);
+          else if (it.type === 'dir' && !seen.has(it.path) && found.size < LIMIT) {
+            seen.add(it.path);
+            stack.push(it.path);
+          }
+        }
+        setWalkNote(`Обхожу папки: ${done} · файлов: ${found.size}`);
+        if (found.size >= LIMIT) break;
+      }
+      if (ctrl.signal.aborted) return;
+      setSelected((prev) => new Set([...prev, ...found]));
+      if (found.size >= LIMIT) {
+        setWalkNote(`Выделено (лимит ${LIMIT}): ${found.size}`);
+      } else {
+        setWalkNote(null);
+        app.toast(`Выделено файлов: ${found.size}`, 'success');
+      }
+    } catch (e) {
+      setWalkNote(null);
+      app.toast((e as Error)?.message || 'Не удалось обойти папки', 'error');
+    } finally {
+      setWalkBusy(false);
+      walkAbortRef.current = null;
+    }
+  };
 
   const picked: PhotoRec[] = useMemo(
     () => (items ?? []).filter((i) => i.type === 'file' && selected.has(i.path)).map(yToRec),
@@ -177,6 +235,26 @@ function FromDiskSegment() {
           Корень Диска
         </button>
       </div>
+
+      {items && (
+        <div className="chips">
+          <button
+            className="chip"
+            onClick={selectHere}
+            disabled={walkBusy || !items.some((i) => i.type === 'file')}
+          >
+            ☑ Все файлы папки ({items.filter((i) => i.type === 'file').length})
+          </button>
+          <button className="chip" onClick={() => void selectTree()} disabled={walkBusy}>
+            {walkBusy ? '⏳ Обхожу…' : '☑ Включая подпапки'}
+          </button>
+        </div>
+      )}
+      {walkNote && (
+        <div className="index-line">
+          <span className="muted">{walkNote}</span>
+        </div>
+      )}
 
       {error && (
         <div className="index-line">
@@ -249,7 +327,12 @@ function ToDeviceSegment() {
   const dir = useLocalDir(app.settings.localRoot);
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [dialogOpen, setDialogOpen] = useState(false);
+  const [walkNote, setWalkNote] = useState<string | null>(null);
+  const [walkBusy, setWalkBusy] = useState(false);
   const bootRef = useRef(false);
+  const walkAbortRef = useRef<AbortController | null>(null);
+
+  useEffect(() => () => walkAbortRef.current?.abort(), []);
 
   // Первый вход: открываем последнюю папку, когда доступ выдан.
   useEffect(() => {
@@ -268,6 +351,38 @@ function ToDeviceSegment() {
     });
 
   const files = dir.listing?.files ?? [];
+
+  /** Выделить все файлы текущей папки (без подпапок). */
+  const selectHere = () => {
+    const next = new Set(selected);
+    for (const f of files) next.add(f.path);
+    setSelected(next);
+  };
+
+  /** Выделить все файлы папки, включая подпапки. */
+  const selectTree = async () => {
+    if (walkBusy) return;
+    const ctrl = new AbortController();
+    walkAbortRef.current = ctrl;
+    setWalkBusy(true);
+    setWalkNote('Обхожу папки…');
+    try {
+      const found = await walkAllFiles(dir.path, ctrl.signal, (p) =>
+        setWalkNote(`${p.done}/${p.total} папок · ${p.detail}`),
+      );
+      if (ctrl.signal.aborted) return;
+      setSelected((prev) => new Set([...prev, ...found.map((f) => f.path)]));
+      setWalkNote(null);
+      app.toast(`Выделено файлов: ${found.length}`, 'success');
+    } catch (e) {
+      setWalkNote(null);
+      if (!isAbort(e)) app.toast((e as Error)?.message || 'Не удалось обойти папки', 'error');
+    } finally {
+      setWalkBusy(false);
+      walkAbortRef.current = null;
+    }
+  };
+
   const picked: PhotoRec[] = useMemo(
     () => files.filter((f) => selected.has(f.path)).map(dToRec),
     [files, selected],
@@ -300,6 +415,16 @@ function ToDeviceSegment() {
         selected={selected}
         onToggle={toggle}
       >
+        <button
+          className="btn ghost sm"
+          onClick={selectHere}
+          disabled={walkBusy || !files.length}
+        >
+          ☑ Все файлы ({files.length})
+        </button>
+        <button className="btn ghost sm" onClick={() => void selectTree()} disabled={walkBusy}>
+          {walkBusy ? '⏳ Обхожу…' : '☑ Включая подпапки'}
+        </button>
         {picked.length > 0 && (
           <button className="btn primary sm" onClick={() => setDialogOpen(true)}>
             ⬆ В очередь загрузки ({picked.length})
@@ -311,6 +436,11 @@ function ToDeviceSegment() {
           </button>
         )}
       </DirBrowser>
+      {walkNote && (
+        <div className="index-line">
+          <span className="muted">{walkNote}</span>
+        </div>
+      )}
       {dialogOpen && (
         <UploadDialog
           files={picked}

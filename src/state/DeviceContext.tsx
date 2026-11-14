@@ -330,11 +330,14 @@ export function DeviceProvider({ children }: { children: ReactNode }) {
       for (const [from, to] of pairs) {
         if (from === to) continue;
         try {
-          let target = to;
+          // Диалоги передают только имя файла — путь собираем в папке источника.
+          // Иначе нативный rename получит относительный путь (рабочая папка
+          // приложения — «/»), молча вернёт false и упрётся в «unknown error».
+          let target = to.includes('/') ? to : joinLocal(parentLocal(from), to);
           if (await exists(target)) {
             // Не затираем чужой файл — подбираем свободное имя.
-            const dir = parentLocal(to);
-            const name = baseName(to);
+            const dir = parentLocal(target);
+            const name = baseName(target);
             const dot = name.lastIndexOf('.');
             const stem = dot > 0 ? name.slice(0, dot) : name;
             const ext = dot > 0 ? name.slice(dot) : '';

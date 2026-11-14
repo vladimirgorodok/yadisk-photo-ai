@@ -187,13 +187,15 @@ export async function makeThumb(blob: Blob, max = 256): Promise<Blob> {
 const SKIP_DIRS = new Set(['Android', 'Android/data', 'LOST.DIR', '.thumbnails']);
 
 /**
- * Рекурсивный обход папки в поиске изображений.
- * Недоступные папки пропускаются (на правах «все файлы» их обычно не бывает).
+ * Рекурсивный обход папки: отбирает файлы по предикату `keep`,
+ * недоступные папки пропускаются (на правах «все файлы» их обычно не бывает).
  */
-export async function walkImages(
+async function walk(
   root: string,
   signal: AbortSignal,
   onProgress: (p: Progress) => void,
+  keep: (name: string) => boolean,
+  noun: string,
 ): Promise<DeviceFile[]> {
   const out: DeviceFile[] = [];
   const stack: string[] = [root];
@@ -215,7 +217,7 @@ export async function walkImages(
     }
     dirsDone++;
     for (const f of entries.files) {
-      if (isImageName(f.name)) out.push(f);
+      if (keep(f.name)) out.push(f);
     }
     for (const d of entries.dirs) {
       const rel = d.path.slice(root.length).replace(/^\//, '');
@@ -229,7 +231,7 @@ export async function walkImages(
         label: 'Сканирую папки устройства',
         done: dirsDone,
         total: dirsTotal,
-        detail: `Найдено изображений: ${out.length}${errors ? `, пропущено папок: ${errors}` : ''}`,
+        detail: `Найдено ${noun}: ${out.length}${errors ? `, пропущено папок: ${errors}` : ''}`,
       });
     }
     // Небольшая пауза, чтобы не блокировать UI надолго
@@ -239,9 +241,27 @@ export async function walkImages(
     label: 'Сканирую папки устройства',
     done: dirsDone,
     total: dirsTotal,
-    detail: `Найдено изображений: ${out.length}`,
+    detail: `Найдено ${noun}: ${out.length}`,
   });
   return out;
+}
+
+/** Рекурсивный обход папки в поиске изображений. */
+export async function walkImages(
+  root: string,
+  signal: AbortSignal,
+  onProgress: (p: Progress) => void,
+): Promise<DeviceFile[]> {
+  return walk(root, signal, onProgress, isImageName, 'изображений');
+}
+
+/** Рекурсивный обход папки: все файлы без разбора по типу (выбор папки целиком). */
+export async function walkAllFiles(
+  root: string,
+  signal: AbortSignal,
+  onProgress: (p: Progress) => void,
+): Promise<DeviceFile[]> {
+  return walk(root, signal, onProgress, () => true, 'файлов');
 }
 
 /** Кэш object-URL для локальных миниатюр (Blob из IndexedDB). */
