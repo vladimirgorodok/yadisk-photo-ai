@@ -4,6 +4,8 @@ import { previewCache } from '../lib/scan';
 import { localThumbUrl } from '../lib/localfs';
 import { useApp } from '../state/AppContext';
 import { clamp } from '../lib/util';
+import { CopyDialog, DeleteConfirm, FileInfoDialog } from './CardDialogs';
+import { MoveDialog } from './MoveDialog';
 
 export function relevance(score: number): number {
   return clamp((score - 0.1) / 0.25, 0, 1);
@@ -61,6 +63,8 @@ export function Thumb({ rec }: { rec: PhotoRec }) {
   return <img src={src} alt={rec.name} loading="lazy" decoding="async" onError={refresh} />;
 }
 
+type CardAction = { type: 'info' | 'copy' | 'move' | 'delete'; rec: PhotoRec };
+
 export function PhotoGrid({
   items,
   scores,
@@ -69,19 +73,26 @@ export function PhotoGrid({
   scores?: Map<string, number>;
 }) {
   const app = useApp();
+  const [menu, setMenu] = useState<string | null>(null);
+  const [action, setAction] = useState<CardAction | null>(null);
+
   return (
-    <div className="grid">
+    <div className="grid" onClick={() => setMenu(null)}>
       {items.map((rec) => {
         const src = rec.thumb
           ? localThumbUrl(rec.path, rec.thumb)
           : (previewCache.get(rec.path) ?? rec.preview);
         const sel = app.isSelected(rec.path);
         const score = scores?.get(rec.path);
+        const menuOpen = menu === rec.path;
         return (
           <div
             key={rec.path}
             className={`card ${sel ? 'sel' : ''}`}
-            onClick={() => app.toggleSelect({ path: rec.path, name: rec.name, preview: src })}
+            onClick={() => {
+              setMenu(null);
+              app.toggleSelect({ path: rec.path, name: rec.name, preview: src });
+            }}
             role="checkbox"
             aria-checked={sel}
             tabIndex={0}
@@ -102,6 +113,54 @@ export function PhotoGrid({
                   {Math.round(relevance(score) * 100)}%
                 </span>
               )}
+              <button
+                className={`card-more ${menuOpen ? 'on' : ''}`}
+                aria-label="Действия с файлом"
+                title="Копировать, переместить, удалить, свойства"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  setMenu(menuOpen ? null : rec.path);
+                }}
+              >
+                ⋯
+              </button>
+              {menuOpen && (
+                <div className="card-menu" onClick={(e) => e.stopPropagation()}>
+                  <button
+                    onClick={() => {
+                      setMenu(null);
+                      setAction({ type: 'info', rec });
+                    }}
+                  >
+                    ℹ Свойства
+                  </button>
+                  <button
+                    onClick={() => {
+                      setMenu(null);
+                      setAction({ type: 'copy', rec });
+                    }}
+                  >
+                    📋 Копировать
+                  </button>
+                  <button
+                    onClick={() => {
+                      setMenu(null);
+                      setAction({ type: 'move', rec });
+                    }}
+                  >
+                    📁 Переместить
+                  </button>
+                  <button
+                    className="danger"
+                    onClick={() => {
+                      setMenu(null);
+                      setAction({ type: 'delete', rec });
+                    }}
+                  >
+                    🗑 Удалить
+                  </button>
+                </div>
+              )}
             </div>
             <div className="card-title" title={rec.name}>
               {rec.name}
@@ -109,6 +168,19 @@ export function PhotoGrid({
           </div>
         );
       })}
+
+      {action?.type === 'info' && <FileInfoDialog rec={action.rec} onClose={() => setAction(null)} />}
+      {action?.type === 'copy' && <CopyDialog rec={action.rec} onClose={() => setAction(null)} />}
+      {action?.type === 'move' && (
+        <MoveDialog
+          mode={action.rec.source === 'local' ? 'local' : 'disk'}
+          files={[{ path: action.rec.path, name: action.rec.name, preview: undefined }]}
+          defaultPath={action.rec.dir || (action.rec.source === 'local' ? '/' : 'disk:/')}
+          title={`Переместить: ${action.rec.name}`}
+          onClose={() => setAction(null)}
+        />
+      )}
+      {action?.type === 'delete' && <DeleteConfirm rec={action.rec} onClose={() => setAction(null)} />}
     </div>
   );
 }

@@ -12,6 +12,10 @@ export interface Settings {
   uploadDir: string;
   /** Последняя открытая папка в модуле «Устройство». */
   localRoot: string;
+  /** Тема интерфейса. */
+  theme: 'system' | 'light' | 'dark';
+  /** Маски переименования для каждой функции (см. naming.nameFromMask). */
+  renameMasks: { content: string; ocr: string };
 }
 
 const KEY = 'yfa:settings:v1';
@@ -26,6 +30,8 @@ export const DEFAULT_SETTINGS: Settings = {
   downloadDir: '/storage/emulated/0/Download/Диск Фото AI',
   uploadDir: 'disk:/С устройства',
   localRoot: '/storage/emulated/0',
+  theme: 'system',
+  renameMasks: { content: '{date} {text}', ocr: '{text} {date}' },
 };
 
 export function loadSettings(): Settings {

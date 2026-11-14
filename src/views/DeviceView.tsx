@@ -5,7 +5,6 @@ import { PhotoGrid } from '../components/PhotoGrid';
 import { ProgressPanel } from '../components/ProgressPanel';
 import { RenameDialog } from '../components/RenameDialog';
 import { UploadDialog } from '../components/UploadDialog';
-import { TransferPanel } from '../components/TransferPanel';
 import { scoreQuery } from '../lib/search';
 import { listDir, parentLocal, type DeviceFile } from '../lib/localfs';
 import { formatDate, plural } from '../lib/util';
@@ -157,7 +156,6 @@ export function DeviceView() {
             «Релизы» на GitHub.
           </p>
         </div>
-        <TransferPanel />
       </div>
     );
   }
@@ -177,7 +175,6 @@ export function DeviceView() {
             {granting ? 'Запрашиваю…' : 'Выдать доступ'}
           </button>
         </div>
-        <TransferPanel />
       </div>
     );
   }
@@ -404,9 +401,6 @@ export function DeviceView() {
           </div>
         </div>
       )}
-
-      {/* --- Трансфер --- */}
-      <TransferPanel />
 
       {/* --- Диалоги --- */}
       {renameOpen && <RenameDialog files={localSel} onClose={() => setRenameOpen(false)} />}

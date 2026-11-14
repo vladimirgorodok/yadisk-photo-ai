@@ -1,40 +1,34 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { Modal } from './Modal';
+import { RenameReview } from './RenameReview';
 import { useApp } from '../state/AppContext';
 import { useDevice, type CaptionStatus } from '../state/DeviceContext';
 import { captionImage, preloadCaptioner, toRussian, setModelStatus } from '../lib/ai';
-import { cleanCaption, suggestFileName } from '../lib/naming';
-import { extOf, localThumbUrl, readBlob } from '../lib/localfs';
+import { cleanCaption, nameFromMask } from '../lib/naming';
+import { exifDate } from '../lib/exif';
+import { extOf, makeThumb, readBlob } from '../lib/localfs';
 import type { PhotoRec } from '../types';
-
-type ItemState = 'wait' | 'captioning' | 'ready' | 'renamed' | 'failed';
-
-interface Item {
-  path: string;
-  name: string;
-  caption?: string;
-  proposed: string;
-  checked: boolean;
-  state: ItemState;
-  error?: string;
-}
+import type { ReviewItem } from '../lib/reviewTypes';
 
 /**
- * «Переименовать по содержимому»: BLIP строит подпись изображения,
- * переводчик en→ru даёт русское имя, пользователь правит и выбирает файлы.
+ * «Переименовать по содержимому»: модель описывает изображение,
+ * переводчик даёт русское имя, имя собирается по маске из настроек
+ * с настоящей датой (EXIF → mtime). Пользователь правит и выбирает файлы.
  */
 export function RenameDialog({ files, onClose }: { files: PhotoRec[]; onClose: () => void }) {
   const app = useApp();
   const device = useDevice();
-  const [items, setItems] = useState<Item[]>(() =>
+  const recs = useRef(new Map(files.map((f) => [f.path, f]))).current;
+  const [items, setItems] = useState<ReviewItem[]>(() =>
     files.map((f) => ({
       path: f.path,
       name: f.name,
       proposed: f.name,
       checked: true,
-      state: 'wait' as ItemState,
+      state: 'wait' as const,
     })),
   );
+  const [thumbs, setThumbs] = useState<Map<string, string>>(() => new Map());
   const [phase, setPhase] = useState<'model' | 'captioning' | 'ready' | 'renaming' | 'done'>('model');
   const [progress, setProgress] = useState({ done: 0, total: files.length, detail: 'Загрузка модели подписей…' });
   const [summary, setSummary] = useState<{ done: number; failed: { from: string; error: string }[] } | null>(null);
@@ -42,11 +36,11 @@ export function RenameDialog({ files, onClose }: { files: PhotoRec[]; onClose: (
   const itemsRef = useRef(items);
   itemsRef.current = items;
 
-  const setItem = useCallback((path: string, patch: Partial<Item>) => {
+  const setItem = useCallback((path: string, patch: Partial<ReviewItem>) => {
     setItems((prev) => prev.map((it) => (it.path === path ? { ...it, ...patch } : it)));
   }, []);
 
-  // Подписи: модель BLIP + переводчик en→ru грузятся с прогрессом в шапке.
+  // Подписи: модель + переводчик грузятся с прогрессом в шапке.
   useEffect(() => {
     setModelStatus((s: CaptionStatus | null) => {
       if (s) setProgress((p) => ({ ...p, detail: s.msg ? `${s.msg}${s.pct < 100 ? ` ${s.pct}%` : ''}` : p.detail }));
@@ -69,23 +63,47 @@ export function RenameDialog({ files, onClose }: { files: PhotoRec[]; onClose: (
             done++;
             continue;
           }
-          setItem(it.path, { state: 'captioning' });
+          setItem(it.path, { state: 'busy', note: 'анализирую…' });
           setProgress({ done, total, detail: it.name });
           try {
             // Оригинал даёт лучшую подпись; если формат не декодируется — миниатюра.
+            const rec = recs.get(it.path);
+            let blob: Blob;
+            try {
+              blob = await readBlob(it.path, 'image/jpeg');
+            } catch {
+              if (!rec?.thumb) throw new Error('файл не читается');
+              blob = rec.thumb;
+            }
+            // Настоящая дата: EXIF (дата съёмки) → время файла (не меняется при переименовании).
+            const date = (await exifDate(blob)) ?? rec?.mtime;
+            // Миниатюра для списка — из того же прочитанного блоба.
+            try {
+              const t = await makeThumb(blob, 256);
+              setThumbs((prev) => {
+                const next = new Map(prev);
+                next.set(it.path, URL.createObjectURL(t));
+                return next;
+              });
+            } catch {
+              /* без миниатюры — покажем эмодзи */
+            }
             let caption = '';
             try {
-              caption = await captionImage(await readBlob(it.path, 'image/jpeg'));
+              caption = await captionImage(blob);
             } catch {
-              const rec = files.find((f) => f.path === it.path);
               if (rec?.thumb) caption = await captionImage(rec.thumb);
             }
             caption = caption.trim();
             if (!caption) throw new Error('пустая подпись');
             const ru = cleanCaption(await toRussian(caption));
-            const rec = files.find((f) => f.path === it.path);
-            const proposed = suggestFileName(ru, rec?.mtime, extOf(it.name));
-            setItem(it.path, { caption, proposed, state: 'ready' });
+            const proposed = nameFromMask(app.settings.renameMasks.content, {
+              text: ru,
+              dateMs: date,
+              origName: it.name,
+              ext: extOf(it.name),
+            });
+            setItem(it.path, { caption: ru, date, proposed, state: 'ready' });
           } catch (e) {
             setItem(it.path, { state: 'failed', error: (e as Error)?.message || 'не удалось подписать' });
           }
@@ -115,12 +133,12 @@ export function RenameDialog({ files, onClose }: { files: PhotoRec[]; onClose: (
   const toggle = (path: string, checked: boolean) => setItem(path, { checked });
   const edit = (path: string, proposed: string) => setItem(path, { proposed });
 
-  const selectedCount = items.filter((i) => i.checked && i.state !== 'failed').length;
+  const selectedCount = items.filter((i) => i.checked && i.state !== 'failed' && i.state !== 'skip').length;
 
   const doRename = async () => {
     const pairs = new Map<string, string>();
     for (const it of itemsRef.current) {
-      if (!it.checked || it.state === 'failed') continue;
+      if (!it.checked || it.state === 'failed' || it.state === 'skip') continue;
       const target = it.proposed.trim();
       if (!target || target === it.name || target.includes('/')) continue;
       pairs.set(it.path, target);
@@ -156,11 +174,7 @@ export function RenameDialog({ files, onClose }: { files: PhotoRec[]; onClose: (
             <button className="btn ghost" onClick={phase === 'captioning' ? stopCaptioning : onClose}>
               {phase === 'captioning' ? 'Остановить подпись' : 'Отмена'}
             </button>
-            <button
-              className="btn primary"
-              onClick={doRename}
-              disabled={phase !== 'ready' || !selectedCount}
-            >
+            <button className="btn primary" onClick={doRename} disabled={phase !== 'ready' || !selectedCount}>
               {phase === 'renaming' ? 'Переименовываю…' : `Переименовать выделенные (${selectedCount})`}
             </button>
           </>
@@ -168,9 +182,10 @@ export function RenameDialog({ files, onClose }: { files: PhotoRec[]; onClose: (
       }
     >
       <p className="muted">
-        Модель BLIP описывает каждое фото, переводчик переводит подпись на русский — получается имя
-        вида <code>2024-05-12_кот_на_диване.jpg</code>. Имя можно поправить вручную. После
-        переименования действие отменяется кнопкой ↶ в разделе «Устройство».
+        ИИ описывает каждое фото, переводчик переводит подпись на русский — имя собирается по
+        маске <code>{app.settings.renameMasks.content || '{text} {date}'}</code> с настоящей датой
+        снимка (EXIF, иначе дата файла). Имя можно поправить вручную. Отмена — кнопкой ↶
+        в разделе «Устройство».
       </p>
 
       {phase !== 'ready' && phase !== 'done' && (
@@ -199,45 +214,12 @@ export function RenameDialog({ files, onClose }: { files: PhotoRec[]; onClose: (
         </ul>
       )}
 
-      <div className="rename-list">
-        {items.map((it) => {
-          const rec = files.find((f) => f.path === it.path);
-          const src = rec?.thumb ? localThumbUrl(it.path, rec.thumb) : undefined;
-          return (
-            <div key={it.path} className={`rename-item ${it.state}`}>
-              <label className="rename-check" onClick={(e) => e.stopPropagation()}>
-                <input
-                  type="checkbox"
-                  checked={it.checked && it.state !== 'failed'}
-                  disabled={it.state === 'wait' || it.state === 'captioning' || it.state === 'failed'}
-                  onChange={(e) => toggle(it.path, e.target.checked)}
-                />
-              </label>
-              <div className="rename-thumb">
-                {src ? <img src={src} alt="" loading="lazy" /> : <span>🖼️</span>}
-              </div>
-              <div className="rename-main">
-                <input
-                  className="rename-input"
-                  type="text"
-                  value={it.proposed}
-                  spellCheck={false}
-                  disabled={it.state === 'wait' || it.state === 'captioning'}
-                  onChange={(e) => edit(it.path, e.target.value)}
-                />
-                <div className="rename-caption">
-                  {it.state === 'wait' && <span className="muted">в очереди…</span>}
-                  {it.state === 'captioning' && <span className="muted">анализирую…</span>}
-                  {it.state === 'ready' && (it.caption || <span className="muted">без подписи</span>)}
-                  {it.state === 'failed' && <span className="err-text">⚠ {it.error}</span>}
-                  {it.state === 'renamed' && <span className="ok-text">переименован</span>}
-                  <span className="rename-orig"> был: {it.name}</span>
-                </div>
-              </div>
-            </div>
-          );
-        })}
-      </div>
+      <RenameReview items={items} thumbs={thumbs} onToggle={toggle} onEdit={edit} />
+      {!busy && phase !== 'done' && (
+        <div className="index-line muted">
+          Маска: <code>{app.settings.renameMasks.content}</code> · изменить — в «Настройках»
+        </div>
+      )}
     </Modal>
   );
 }

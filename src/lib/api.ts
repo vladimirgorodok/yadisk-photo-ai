@@ -194,6 +194,16 @@ export class YandexDisk {
     if (op?.href) await this.waitOperation(op.href);
   }
 
+  /** Копия файла на Диске (действия с карточками и «Менеджер»). */
+  async copy(from: string, to: string, overwrite = false): Promise<void> {
+    const op = await this.request<{ href?: string }>('POST', `${API}/resources/copy`, {
+      from,
+      path: to,
+      overwrite,
+    });
+    if (op?.href) await this.waitOperation(op.href);
+  }
+
   /** Подписанная ссылка на скачивание файла. */
   async downloadUrl(path: string): Promise<string> {
     const j = await this.request<{ href?: string }>('GET', `${API}/resources/download`, { path });

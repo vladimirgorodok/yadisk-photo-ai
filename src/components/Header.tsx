@@ -1,7 +1,7 @@
 import { useApp } from '../state/AppContext';
 import { useDevice } from '../state/DeviceContext';
 
-export type Tab = 'search' | 'groups' | 'device' | 'settings';
+export type Tab = 'disk' | 'device' | 'manager' | 'rename' | 'settings';
 
 export function Header({ tab, setTab }: { tab: Tab; setTab: (t: Tab) => void }) {
   const app = useApp();
@@ -11,7 +11,7 @@ export function Header({ tab, setTab }: { tab: Tab; setTab: (t: Tab) => void }) 
   ).length;
   return (
     <header className="header">
-      <div className="brand" onClick={() => setTab('search')} role="button" tabIndex={0}>
+      <div className="brand" onClick={() => setTab('disk')} role="button" tabIndex={0}>
         <span className="brand-logo" aria-hidden>
           <svg viewBox="0 0 48 48" width="28" height="28">
             <rect x="6" y="9" width="36" height="28" rx="7" fill="none" stroke="currentColor" strokeWidth="3" />
@@ -24,19 +24,26 @@ export function Header({ tab, setTab }: { tab: Tab; setTab: (t: Tab) => void }) 
         </span>
       </div>
       <nav className="tabs" aria-label="Разделы">
-        <button className={tab === 'search' ? 'on' : ''} onClick={() => setTab('search')}>
-          Поиск
+        <button className={tab === 'disk' ? 'on' : ''} onClick={() => setTab('disk')}>
+          Диск
         </button>
-        <button className={tab === 'groups' ? 'on' : ''} onClick={() => setTab('groups')}>
-          Группы
+        <button className={tab === 'device' ? 'on' : ''} onClick={() => setTab('device')}>
+          Устройство
         </button>
         <button
-          className={`tab-device ${tab === 'device' ? 'on' : ''}`}
-          onClick={() => setTab('device')}
-          title="Файлы устройства: ИИ-анализ, переименование, трансфер"
+          className={`tab-device ${tab === 'manager' ? 'on' : ''}`}
+          onClick={() => setTab('manager')}
+          title="Менеджер файлов: перенос между Диском и устройством, очередь"
         >
-          Устройство
+          Менеджер
           {activeJobs > 0 && <span className="tab-badge">{activeJobs}</span>}
+        </button>
+        <button
+          className={tab === 'rename' ? 'on' : ''}
+          onClick={() => setTab('rename')}
+          title="Функции переименования файлов"
+        >
+          Переименование
         </button>
         <button className={tab === 'settings' ? 'on' : ''} onClick={() => setTab('settings')}>
           Настройки

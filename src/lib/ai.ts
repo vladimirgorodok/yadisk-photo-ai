@@ -5,7 +5,7 @@ type Transformers = typeof import('@huggingface/transformers');
 export const CLIP_MODEL = 'Xenova/clip-vit-base-patch32';
 export const TRANSLATE_MODEL = 'Xenova/opus-mt-ru-en';
 export const TRANSLATE_EN_RU_MODEL = 'Xenova/opus-mt-en-ru';
-export const CAPTION_MODEL = 'Xenova/blip-image-captioning-base';
+export const CAPTION_MODEL = 'Xenova/vit-gpt2-image-captioning';
 
 let lib: Transformers | null = null;
 

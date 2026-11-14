@@ -372,6 +372,61 @@ export function SettingsView() {
       </section>
 
       <section className="panel">
+        <h2>Внешний вид и переименование</h2>
+        <label className="field">
+          <span>Тема</span>
+          <div className="chips">
+            {(['system', 'light', 'dark'] as const).map((t) => (
+              <button
+                key={t}
+                className={`chip ${settings.theme === t ? 'on' : ''}`}
+                onClick={() => updateSettings({ theme: t })}
+              >
+                {t === 'system' ? '🖥 Системная' : t === 'light' ? '☀️ Светлая' : '🌙 Тёмная'}
+              </button>
+            ))}
+          </div>
+        </label>
+
+        <label className="field">
+          <span>Маска имени — функция «По содержимому»</span>
+          <input
+            value={settings.renameMasks.content}
+            onChange={(e) => updateSettings({ renameMasks: { ...settings.renameMasks, content: e.target.value } })}
+            placeholder="{date} {text}"
+            spellCheck={false}
+          />
+          <small className="muted">
+            {'{text}'} — подпись ИИ, {'{date}'} — ДД.ММ.ГГ, {'{dateiso}'} — ГГГГ-ММ-ДД, {'{time}'} — ЧЧ.ММ,
+            {' {name}'} — старое имя файла. Например «{'{date} {text}'}» → 14.11.26 кот на диване.jpg
+          </small>
+        </label>
+
+        <label className="field">
+          <span>Маска имени — функция «Текст на картинке»</span>
+          <input
+            value={settings.renameMasks.ocr}
+            onChange={(e) => updateSettings({ renameMasks: { ...settings.renameMasks, ocr: e.target.value } })}
+            placeholder="{text} {date}"
+            spellCheck={false}
+          />
+          <small className="muted">
+            {'{text}'} — распознанный текст, {'{date}'} — настоящая дата файла (EXIF дата съёмки, иначе
+            дата файла) в формате ДД.ММ.ГГ. Например «{'{text} {date}'}» → Договор 14.11.26.jpg
+          </small>
+        </label>
+
+        <div className="btn-row">
+          <button
+            className="btn ghost sm"
+            onClick={() => updateSettings({ renameMasks: { content: '{date} {text}', ocr: '{text} {date}' } })}
+          >
+            Сбросить маски
+          </button>
+        </div>
+      </section>
+
+      <section className="panel">
         <h2>О приложении</h2>
         <p className="muted">
           <b>Диск Фото AI</b> — PWA и Android-приложение: ИИ-поиск фотографий по описанию на Яндекс Диске,

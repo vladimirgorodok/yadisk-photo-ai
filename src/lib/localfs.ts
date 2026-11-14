@@ -138,6 +138,11 @@ export async function renameFile(from: string, to: string): Promise<void> {
   await Filesystem.rename({ from, to });
 }
 
+/** Копия файла по абсолютным путям (для «Копировать» на карточках). */
+export async function copyFile(from: string, to: string): Promise<void> {
+  await Filesystem.copy({ from, to });
+}
+
 function base64ToBlob(b64: string, mime: string): Blob {
   const bin = atob(b64);
   const bytes = new Uint8Array(bin.length);

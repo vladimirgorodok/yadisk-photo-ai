@@ -46,6 +46,16 @@ export default defineConfig({
             },
           },
           {
+            // Ядро и worker Tesseract (распознавание текста) — качаются один раз.
+            urlPattern: /^https:\/\/(cdn\.jsdelivr\.net|unpkg\.com|tessdata\.projectnaptha\.com)\/.*/i,
+            handler: 'CacheFirst',
+            options: {
+              cacheName: 'ocr-assets',
+              cacheableResponse: { statuses: [0, 200] },
+              expiration: { maxEntries: 40, maxAgeSeconds: 60 * 60 * 24 * 365 },
+            },
+          },
+          {
             urlPattern: /\/models\/.*/i,
             handler: 'CacheFirst',
             options: {
